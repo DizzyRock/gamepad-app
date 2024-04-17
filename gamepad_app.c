@@ -13,6 +13,8 @@
 #define SEESAW_STATUS_SWRST 0x7F
 #define SEESAW_ADC_BASE 0x09
 #define SEESAW_ADC_CHANNEL_OFFSET 0x07
+#define SEESAW_GPIO_BASE 0x01
+#define SEESAW_GPIO_BULK_INPUT 0x04
 
 #define JOYSTICK_X_CHANNEL 14
 #define JOYSTICK_Y_CHANNEL 15
@@ -20,6 +22,16 @@
 #define CENTER_LOW 411
 #define CENTER_HIGH 611
 #define OFFSET 200
+
+#define BUTTON_A 5
+#define BUTTON_B 1
+#define BUTTON_X 6
+#define BUTTON_Y 2
+#define BUTTON_SELECT 0
+#define BUTTON_START 16
+
+#define BUTTON_MASK ((1UL << BUTTON_A) | (1UL << BUTTON_B) | (1UL << BUTTON_X) | \
+                     (1UL << BUTTON_Y) | (1UL << BUTTON_SELECT) | (1UL << BUTTON_START))
 
 
 void seesaw_init(int i2c_fd) {
@@ -46,6 +58,29 @@ uint16_t seesaw_analog_read(int i2c_fd, uint8_t channel) {
     return analog_value;
 }
 
+uint32_t read_buttons(int i2c_fd) {
+    uint8_t cmd[2] = {SEESAW_GPIO_BASE, SEESAW_GPIO_BULK_INPUT};
+    uint32_t buttons_state = 0;
+    uint32_t mask_state;
+
+    write(i2c_fd, cmd, sizeof(cmd)); 
+    read(i2c_fd, &buttons_state, sizeof(buttons_state)); 
+
+    
+    mask_state = ~buttons_state & BUTTON_MASK;
+
+    return mask_state;
+}
+
+
+void print_button_state(uint32_t buttons) {
+    if (buttons & (1 << BUTTON_A)) printf("Button A pressed\n");
+    if (buttons & (1 << BUTTON_B)) printf("Button B pressed\n");
+    if (buttons & (1 << BUTTON_X)) printf("Button X pressed\n");
+    if (buttons & (1 << BUTTON_Y)) printf("Button Y pressed\n");
+    if (buttons & (1 << BUTTON_SELECT)) printf("Button SELECT pressed\n");
+    if (buttons & (1 << BUTTON_START)) printf("Button START pressed\n");
+}
 
 int main() {
     int i2c_fd = open(I2C_DEVICE, O_RDWR);
@@ -65,29 +100,33 @@ int main() {
     while (1) {
         uint16_t x = seesaw_analog_read(i2c_fd, JOYSTICK_X_CHANNEL);
         uint16_t y = seesaw_analog_read(i2c_fd, JOYSTICK_Y_CHANNEL);
+        uint32_t buttons = read_buttons(i2c_fd);
+        
         printf("\033[2J\033[H");  // Clear the screen and reset cursor position
         if (x >= CENTER_LOW && x <= CENTER_HIGH && y >= CENTER_LOW && y <= CENTER_HIGH) {
             printf("Joystick is centered\n");
         } else if (x < CENTER_LOW && y < CENTER_LOW) {
-            printf("Joystick moving up left\n");
-        } else if (x > CENTER_HIGH && y < CENTER_LOW) {
-            printf("Joystick moving up right\n");
-        } else if (x < CENTER_LOW && y > CENTER_HIGH) {
             printf("Joystick moving down left\n");
-        } else if (x > CENTER_HIGH && y > CENTER_HIGH) {
+        } else if (x > CENTER_HIGH && y < CENTER_LOW) {
             printf("Joystick moving down right\n");
+        } else if (x < CENTER_LOW && y > CENTER_HIGH) {
+            printf("Joystick moving up left\n");
+        } else if (x > CENTER_HIGH && y > CENTER_HIGH) {
+            printf("Joystick moving up right\n");
         } else if (x < CENTER_LOW) {
             printf("Joystick moving left\n");
         } else if (x > CENTER_HIGH) {
             printf("Joystick moving right\n");
         } else if (y < CENTER_LOW) {
-            printf("Joystick moving up\n");
-        } else if (y > CENTER_HIGH) {
             printf("Joystick moving down\n");
+        } else if (y > CENTER_HIGH) {
+            printf("Joystick moving up\n");
         }
+        //printf("Raw button data: 0x%08X\n", buttons);
 
+        //print_button_state(buttons);
         // Clear the screen and move the cursor to the top-left corner
-        //printf("\033[2J\033[H");
+        
         printf("Joystick X: %d, Y: %d\n", x, y);
         usleep(100000);  // Update every 100ms
     }
